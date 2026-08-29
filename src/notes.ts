@@ -105,6 +105,22 @@ export async function updateNote(
     return JSON.parse(result) as Omit<Note, "plaintext">;
 }
 
+export async function deleteNote(id: string): Promise<{ id: string; name: string }> {
+    // Notes moves a deleted note to Recently Deleted rather than erasing it,
+    // so this is recoverable from the app for about thirty days.
+    const result = await executeOSAScript(`
+        const Notes = Application('Notes');
+        const note = Notes.notes.byId(${JSON.stringify(id)});
+
+        const deleted = { id: note.id(), name: note.name() };
+        Notes.delete(note);
+
+        JSON.stringify(deleted);
+    `);
+
+    return JSON.parse(result) as { id: string; name: string };
+}
+
 export async function getFolders(): Promise<Folder[]> {
     const result = await executeOSAScript(`
         const Notes = Application('Notes');

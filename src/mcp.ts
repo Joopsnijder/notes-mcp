@@ -64,6 +64,26 @@ server.tool(
 );
 
 server.tool(
+    "notes-delete-note",
+    "Delete a note by its identifier. The note moves to Recently Deleted in the Notes app, where it can be restored for about thirty days.",
+    {
+        id: z.string().describe("Identifier of the note to delete"),
+    },
+    async ({ id }) => {
+        const result = await notes.deleteNote(id);
+
+        return {
+            content: [
+                {
+                    type: "text",
+                    text: JSON.stringify(result),
+                },
+            ],
+        };
+    }
+);
+
+server.tool(
     "notes-get-folders",
     "Retrieve all folders with names and identifiers",
     async () => {
