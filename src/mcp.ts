@@ -33,6 +33,31 @@ server.tool(
 );
 
 server.tool(
+    "notes-update-note",
+    "Update the name and/or body of an existing note, identified by its identifier. Replaces the body, so pass the full new content.",
+    {
+        id: z.string().describe("Identifier of the note to update"),
+        name: z.string().optional().describe("New name for the note"),
+        body: z
+            .string()
+            .optional()
+            .describe("New content of the note, replacing the existing content"),
+    },
+    async ({ id, name, body }) => {
+        const result = await notes.updateNote(id, { name, body });
+
+        return {
+            content: [
+                {
+                    type: "text",
+                    text: JSON.stringify(result),
+                },
+            ],
+        };
+    }
+);
+
+server.tool(
     "notes-get-folders",
     "Retrieve all folders with names and identifiers",
     async () => {

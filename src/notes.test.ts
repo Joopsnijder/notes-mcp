@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { bodyToHtml } from "./notes";
+import { bodyToHtml, updateNote } from "./notes";
 
 // plain text: elke regel een eigen div, lege regel blijft zichtbaar
 assert.strictEqual(
@@ -18,3 +18,11 @@ assert.strictEqual(bodyToHtml(html), html);
 assert.strictEqual(bodyToHtml("5 > 3"), "<div>5 &gt; 3</div>");
 
 console.log("bodyToHtml ok");
+
+// een update zonder velden is een vergissing, geen no-op
+assert.rejects(
+    () => updateNote("whatever", {}),
+    /needs a name, a body, or both/
+);
+
+console.log("updateNote guard ok");

@@ -67,6 +67,60 @@ export async function createNote(
     return JSON.parse(result) as Omit<Note, "body" | "plaintext">;
 }
 
+export async function updateNote(
+    id: string,
+    update: {
+        name?: string;
+        body?: string;
+    }
+): Promise<Omit<Note, "plaintext">> {
+    if (update.name === undefined && update.body === undefined) {
+        throw new Error("updateNote needs a name, a body, or both");
+    }
+
+    const escape = (value: string) => value.replace(/[\\'"]/g, "\\$&");
+    // The body has to be written first: Notes rewrites the note name from the
+    // first line of a new body, so a name assigned before it would be lost.
+    const assignments = [
+        update.body !== undefined
+            ? `note.body = "${escape(bodyToHtml(update.body))
+                  .replace(/\n/g, "\\n")
+                  .replace(/\r/g, "")}";`
+            : "",
+        update.name !== undefined
+            ? `note.name = "${escape(update.name)}";`
+            : "",
+    ].join("\n        ");
+
+    // Notes derives the displayed title from the first line of the body, so
+    // writing a body silently renames the note. Put the name back unless the
+    // caller asked for a new one.
+    const restoreName =
+        update.body !== undefined && update.name === undefined
+            ? "note.name = previousName;"
+            : "";
+
+    const result = await executeOSAScript(`
+        const Notes = Application('Notes');
+        const note = Notes.notes.byId('${id}');
+        const previousName = note.name();
+
+        ${assignments}
+        ${restoreName}
+
+        const n = note.properties();
+
+        JSON.stringify({
+            id: n.id,
+            name: n.name,
+            creationDate: n.creationDate,
+            modificationDate: n.modificationDate
+        });
+    `);
+
+    return JSON.parse(result) as Omit<Note, "plaintext">;
+}
+
 export async function getFolders(): Promise<Folder[]> {
     const result = await executeOSAScript(`
         const Notes = Application('Notes');
