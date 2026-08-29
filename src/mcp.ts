@@ -16,7 +16,11 @@ server.tool(
             .string()
             .describe("Identifier of the folder to create the note in"),
         name: z.string().describe("Name of the note"),
-        body: z.string().describe("Content of the note"),
+        body: z
+            .string()
+            .describe(
+                "Content of the note. Plain text with light markdown: # and ## for headings, - or 1. for lists, - [ ] and - [x] for tasks, **bold** and *italic*. Raw HTML is passed through untouched."
+            ),
     },
     async ({ folderId, name, body }) => {
         const result = await notes.createNote(folderId, { name, body });
@@ -41,7 +45,9 @@ server.tool(
         body: z
             .string()
             .optional()
-            .describe("New content of the note, replacing the existing content"),
+            .describe(
+                "New content of the note, replacing the existing content. Same light markdown as notes-create-note."
+            ),
     },
     async ({ id, name, body }) => {
         const result = await notes.updateNote(id, { name, body });

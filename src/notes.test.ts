@@ -1,28 +1,55 @@
 import assert from "node:assert";
-import { bodyToHtml, updateNote } from "./notes";
+import { toNotesHtml } from "./markup";
+import { updateNote } from "./notes";
 
-// plain text: elke regel een eigen div, lege regel blijft zichtbaar
+// plain lines and blank lines
 assert.strictEqual(
-    bodyToHtml("Regel een\n\nRegel twee"),
+    toNotesHtml("Regel een\n\nRegel twee"),
     "<div>Regel een</div><div><br></div><div>Regel twee</div>"
 );
 
-// tekens die HTML zouden breken, worden ontsmet
-assert.strictEqual(bodyToHtml("a < b & c"), "<div>a &lt; b &amp; c</div>");
+// characters that would break the HTML are escaped
+assert.strictEqual(toNotesHtml("a < b & c"), "<div>a &lt; b &amp; c</div>");
 
-// bestaande markup blijft ongemoeid
-const html = "<h2>Kop</h2><ul><li>punt</li></ul>";
-assert.strictEqual(bodyToHtml(html), html);
-
-// losse punthaken maken van tekst nog geen HTML
-assert.strictEqual(bodyToHtml("5 > 3"), "<div>5 &gt; 3</div>");
-
-console.log("bodyToHtml ok");
-
-// een update zonder velden is een vergissing, geen no-op
-assert.rejects(
-    () => updateNote("whatever", {}),
-    /needs a name, a body, or both/
+// headings become the bold, larger text that Notes keeps
+assert.strictEqual(
+    toNotesHtml("# Titel"),
+    '<div><b><span style="font-size: 24px">Titel</span></b></div>'
+);
+assert.strictEqual(
+    toNotesHtml("## Kop"),
+    '<div><b><span style="font-size: 18px">Kop</span></b></div>'
 );
 
-console.log("updateNote guard ok");
+// consecutive bullets collapse into one list
+assert.strictEqual(
+    toNotesHtml("- een\n- twee"),
+    "<ul><li>een</li><li>twee</li></ul>"
+);
+
+// numbered lines keep their own list type
+assert.strictEqual(toNotesHtml("1. een"), "<ol><li>een</li></ol>");
+
+// two adjacent lists need a spacer, or Notes merges them into one
+assert.strictEqual(
+    toNotesHtml("- bullet\n1. genummerd"),
+    "<ul><li>bullet</li></ul><div><br></div><ol><li>genummerd</li></ol>"
+);
+
+// checklists are not supported by Notes, so they degrade to visible boxes
+assert.strictEqual(
+    toNotesHtml("- [ ] open\n- [x] klaar"),
+    "<ul><li>\u2610 open</li><li>\u2611 klaar</li></ul>"
+);
+
+// inline emphasis
+assert.strictEqual(toNotesHtml("**vet** en *schuin*"), "<div><b>vet</b> en <i>schuin</i></div>");
+
+// existing markup is passed through untouched
+const html = "<h2>Kop</h2><ul><li>punt</li></ul>";
+assert.strictEqual(toNotesHtml(html), html);
+
+// an update with no fields is a mistake, not a no-op
+assert.rejects(() => updateNote("whatever", {}), /needs a name, a body, or both/);
+
+console.log("markup ok");

@@ -1,4 +1,5 @@
 import { executeOSAScript } from "./osascript";
+import { toNotesHtml } from "./markup";
 
 export type Note = {
     id: string;
@@ -14,22 +15,13 @@ export type Folder = {
 };
 
 /**
- * Notes stores a note body as HTML, so a plain-text body would collapse into
- * one paragraph. Convert plain text to HTML; pass a body that already contains
- * markup through untouched.
+ * Creating a note makes Notes put the note name on the first line of the body,
+ * where it renders as the title. Replacing a body loses that line, so put it
+ * back — otherwise an updated note opens without a heading.
  */
-export function bodyToHtml(body: string): string {
-    if (/<(br|div|p|ul|ol|li|h[1-6]|b|i|u|span|a|table)\b[^>]*>/i.test(body)) {
-        return body;
-    }
-    const escaped = body
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
-    return escaped
-        .split(/\r?\n/)
-        .map((line) => (line.trim() === "" ? "<div><br></div>" : `<div>${line}</div>`))
-        .join("");
+function titledBody(name: string | undefined, body: string): string {
+    const html = toNotesHtml(body);
+    return name === undefined ? html : `<div>${name}</div>${html}`;
 }
 
 export async function createNote(
@@ -39,18 +31,13 @@ export async function createNote(
         body: string;
     }
 ): Promise<Omit<Note, "plaintext">> {
-    const escapedName = note.name.replace(/[\\'"]/g, "\\$&");
-    const escapedBody = bodyToHtml(note.body)
-        .replace(/[\\'"]/g, "\\$&")
-        .replace(/\n/g, "\\n")
-        .replace(/\r/g, "");
     const result = await executeOSAScript(`
         const Notes = Application('Notes');
 
-        const folder = Notes.folders.whose({ id: '${folderId}' })[0];
+        const folder = Notes.folders.whose({ id: ${JSON.stringify(folderId)} })[0];
         const note = Notes.Note({
-            name: "${escapedName}",
-            body: "${escapedBody}"
+            name: ${JSON.stringify(note.name)},
+            body: ${JSON.stringify(toNotesHtml(note.body))}
         });
 
         folder.notes.push(note);
@@ -78,17 +65,14 @@ export async function updateNote(
         throw new Error("updateNote needs a name, a body, or both");
     }
 
-    const escape = (value: string) => value.replace(/[\\'"]/g, "\\$&");
     // The body has to be written first: Notes rewrites the note name from the
     // first line of a new body, so a name assigned before it would be lost.
     const assignments = [
         update.body !== undefined
-            ? `note.body = "${escape(bodyToHtml(update.body))
-                  .replace(/\n/g, "\\n")
-                  .replace(/\r/g, "")}";`
+            ? `note.body = ${JSON.stringify(titledBody(update.name, update.body))};`
             : "",
         update.name !== undefined
-            ? `note.name = "${escape(update.name)}";`
+            ? `note.name = ${JSON.stringify(update.name)};`
             : "",
     ].join("\n        ");
 
@@ -102,7 +86,7 @@ export async function updateNote(
 
     const result = await executeOSAScript(`
         const Notes = Application('Notes');
-        const note = Notes.notes.byId('${id}');
+        const note = Notes.notes.byId(${JSON.stringify(id)});
         const previousName = note.name();
 
         ${assignments}
@@ -145,7 +129,7 @@ export async function getNotes(
     const result = await executeOSAScript(`
         const Notes = Application('Notes');
         
-        const targetFolder = Notes.folders.byId('${folderId}');
+        const targetFolder = Notes.folders.byId(${JSON.stringify(folderId)});
         const notes = targetFolder.notes();
 
         JSON.stringify(notes.map(n => {
@@ -168,7 +152,7 @@ export async function getNotes(
 export async function getNoteById(id: string): Promise<Note> {
     const result = await executeOSAScript(`
         const Notes = Application('Notes');
-        const note = Notes.notes.byId('${id}');
+        const note = Notes.notes.byId(${JSON.stringify(id)});
 
         const n = note.properties();
 
@@ -188,7 +172,7 @@ export async function getNoteByTitle(title: string): Promise<Note> {
     const result = await executeOSAScript(`
         const Notes = Application('Notes');
         
-        const notes = Notes.notes.whose({name: '${title}'});        
+        const notes = Notes.notes.whose({name: ${JSON.stringify(title)}});        
         const note = notes[0];
 
         const n = note.properties();
