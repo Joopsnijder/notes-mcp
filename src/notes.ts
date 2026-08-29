@@ -13,6 +13,25 @@ export type Folder = {
     name: string;
 };
 
+/**
+ * Notes stores a note body as HTML, so a plain-text body would collapse into
+ * one paragraph. Convert plain text to HTML; pass a body that already contains
+ * markup through untouched.
+ */
+export function bodyToHtml(body: string): string {
+    if (/<(br|div|p|ul|ol|li|h[1-6]|b|i|u|span|a|table)\b[^>]*>/i.test(body)) {
+        return body;
+    }
+    const escaped = body
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    return escaped
+        .split(/\r?\n/)
+        .map((line) => (line.trim() === "" ? "<div><br></div>" : `<div>${line}</div>`))
+        .join("");
+}
+
 export async function createNote(
     folderId: string,
     note: {
@@ -21,7 +40,7 @@ export async function createNote(
     }
 ): Promise<Omit<Note, "plaintext">> {
     const escapedName = note.name.replace(/[\\'"]/g, "\\$&");
-    const escapedBody = note.body
+    const escapedBody = bodyToHtml(note.body)
         .replace(/[\\'"]/g, "\\$&")
         .replace(/\n/g, "\\n")
         .replace(/\r/g, "");
