@@ -42,6 +42,31 @@ assert.strictEqual(
     "<ul><li>\u2610 open</li><li>\u2611 klaar</li></ul>"
 );
 
+// indented items nest inside the item above them
+assert.strictEqual(
+    toNotesHtml("- buiten\n  - binnen\n    - dieper\n- buiten twee"),
+    "<ul><li>buiten</li><ul><li>binnen</li><ul><li>dieper</li></ul></ul><li>buiten twee</li></ul>"
+);
+
+// a nested list keeps its own type
+assert.strictEqual(
+    toNotesHtml("- buiten\n  1. een\n  2. twee"),
+    "<ul><li>buiten</li><ol><li>een</li><li>twee</li></ol></ul>"
+);
+
+// "+" asks for the dash list Notes keeps as its own style
+assert.strictEqual(
+    toNotesHtml("+ streepje een\n+ streepje twee"),
+    '<ul class="Apple-dash-list"><li>streepje een</li><li>streepje twee</li></ul>'
+);
+
+// a list that switches type mid-way still needs the spacer
+assert.strictEqual(
+    toNotesHtml("- bullet\n1. genummerd\n- weer bullet"),
+    "<ul><li>bullet</li></ul><div><br></div><ol><li>genummerd</li></ol>" +
+        "<div><br></div><ul><li>weer bullet</li></ul>"
+);
+
 // inline emphasis
 assert.strictEqual(toNotesHtml("**vet** en *schuin*"), "<div><b>vet</b> en <i>schuin</i></div>");
 
