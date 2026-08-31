@@ -24,13 +24,30 @@ function inline(text: string): string {
         .replace(/(^|[^*])\*([^*]+)\*(?!\*)/g, "$1<i>$2</i>");
 }
 
+/** Notes has three list styles: bullets, dashes, and numbers. */
+type Style = "bullet" | "dash" | "number";
+
+const OPEN: Record<Style, string> = {
+    bullet: "<ul>",
+    dash: '<ul class="Apple-dash-list">',
+    number: "<ol>",
+};
+
+type Item = { indent: number; style: Style; html: string };
+
 type Block =
     | { kind: "line"; html: string }
     | { kind: "blank" }
-    | { kind: "list"; ordered: boolean; items: string[] };
+    | { kind: "list"; items: Item[] };
+
+/** A tab indents as far as two spaces do; only the relative order matters. */
+function indentOf(line: string): number {
+    return /^[ \t]*/.exec(line)![0].replace(/\t/g, "  ").length;
+}
 
 function classify(line: string): Block {
     const trimmed = line.trim();
+    const indent = indentOf(line);
 
     if (trimmed === "") return { kind: "blank" };
 
@@ -51,20 +68,86 @@ function classify(line: string): Block {
     const task = /^[-*]\s+\[([ xX])\]\s+(.*)$/.exec(trimmed);
     if (task) {
         const box = task[1].toLowerCase() === "x" ? "☑" : "☐";
-        return { kind: "list", ordered: false, items: [`${box} ${inline(task[2])}`] };
+        return {
+            kind: "list",
+            items: [{ indent, style: "bullet", html: `${box} ${inline(task[2])}` }],
+        };
     }
 
-    const bullet = /^[-*]\s+(.*)$/.exec(trimmed);
+    // Notes keeps a dash list as its own style, so "+" opts into one.
+    const bullet = /^([-*+])\s+(.*)$/.exec(trimmed);
     if (bullet) {
-        return { kind: "list", ordered: false, items: [inline(bullet[1])] };
+        const style = bullet[1] === "+" ? "dash" : "bullet";
+        return {
+            kind: "list",
+            items: [{ indent, style, html: inline(bullet[2]) }],
+        };
     }
 
     const numbered = /^\d+[.)]\s+(.*)$/.exec(trimmed);
     if (numbered) {
-        return { kind: "list", ordered: true, items: [inline(numbered[1])] };
+        return {
+            kind: "list",
+            items: [{ indent, style: "number", html: inline(numbered[1]) }],
+        };
     }
 
     return { kind: "line", html: inline(trimmed) };
+}
+
+/**
+ * Indents can be any width, so they are ranked rather than measured: each new,
+ * deeper indent in a list opens one more level.
+ */
+function depths(items: Item[]): number[] {
+    const stack: number[] = [];
+
+    return items.map((item) => {
+        while (stack.length && item.indent < stack[stack.length - 1]) stack.pop();
+        if (!stack.length || item.indent > stack[stack.length - 1]) stack.push(item.indent);
+        return stack.length - 1;
+    });
+}
+
+/**
+ * Notes keeps a list nested inside another list, so depth survives. It merges
+ * two lists that touch, though, so a switch of list type needs a spacer.
+ */
+function renderList(items: Item[]): string {
+    const depth = depths(items);
+
+    /** Renders one list at `level`, and returns where it stopped. */
+    const list = (start: number, level: number): [string, number] => {
+        const style = items[start].style;
+        const parts: string[] = [];
+        let i = start;
+
+        while (i < items.length && depth[i] >= level) {
+            if (depth[i] > level) {
+                const [nested, next] = list(i, depth[i]);
+                parts.push(nested);
+                i = next;
+            } else if (items[i].style !== style) {
+                break;
+            } else {
+                parts.push(`<li>${items[i].html}</li>`);
+                i++;
+            }
+        }
+
+        const close = style === "number" ? "</ol>" : "</ul>";
+        return [`${OPEN[style]}${parts.join("")}${close}`, i];
+    };
+
+    const lists: string[] = [];
+    let index = 0;
+    while (index < items.length) {
+        const [html, next] = list(index, 0);
+        lists.push(html);
+        index = next;
+    }
+
+    return lists.join("<div><br></div>");
 }
 
 export function toNotesHtml(body: string): string {
@@ -75,11 +158,7 @@ export function toNotesHtml(body: string): string {
         const block = classify(line);
         const previous = blocks[blocks.length - 1];
 
-        if (
-            block.kind === "list" &&
-            previous?.kind === "list" &&
-            previous.ordered === block.ordered
-        ) {
+        if (block.kind === "list" && previous?.kind === "list") {
             previous.items.push(...block.items);
         } else {
             blocks.push(block);
@@ -87,22 +166,15 @@ export function toNotesHtml(body: string): string {
     }
 
     const html: string[] = [];
-    blocks.forEach((block, index) => {
+    for (const block of blocks) {
         if (block.kind === "blank") {
             html.push("<div><br></div>");
-            return;
-        }
-        if (block.kind === "line") {
+        } else if (block.kind === "line") {
             html.push(`<div>${block.html}</div>`);
-            return;
+        } else {
+            html.push(renderList(block.items));
         }
-
-        const tag = block.ordered ? "ol" : "ul";
-        html.push(`<${tag}>${block.items.map((i) => `<li>${i}</li>`).join("")}</${tag}>`);
-
-        // Two adjacent lists would be merged into one by Notes.
-        if (blocks[index + 1]?.kind === "list") html.push("<div><br></div>");
-    });
+    }
 
     return html.join("");
 }
